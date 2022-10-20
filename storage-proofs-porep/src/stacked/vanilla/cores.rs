@@ -186,7 +186,9 @@ fn create_core_units(
                     let core_index = (j + i * group_size) % core_count + (round * cores_per_unit);
                     assert!(core_index < core_count);
 
-                    allowed_cores.is_set(core_index.try_into().ok()?).then_some(core_index)
+                    allowed_cores
+                        .is_set(core_index.try_into().ok()?)
+                        .then_some(core_index)
                 })
                 .collect::<Vec<_>>()
         })
@@ -233,8 +235,14 @@ fn core_units(cores_per_unit: usize) -> Option<Vec<Mutex<CoreUnit>>> {
         .objects_with_type(&ObjectType::Core)
         .expect("objects_with_type failed");
 
-    let allowed_cores = topo.object_at_root().allowed_cpuset().unwrap_or(hwloc::CpuSet::new());
-        
+    let allowed_cores = topo
+        .get_cpubind(hwloc::CpuBindFlags::empty())
+        .unwrap_or_else(|| {
+            topo.object_at_root()
+                .allowed_cpuset()
+                .unwrap_or(hwloc::CpuSet::full())
+        });
+
     // The total number of physical cores, even across packages.
     let core_count = all_cores.len();
 
@@ -296,7 +304,7 @@ mod tests {
             [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]]
         );
 
-        let dc = create_core_units(32,  2, 4, &(0..32).collect());
+        let dc = create_core_units(32, 2, 4, &(0..32).collect());
         assert_eq!(
             dc,
             [
@@ -376,16 +384,10 @@ mod tests {
         assert_eq!(laptop_not_filled, [[0, 1, 2]]);
 
         let amd_limited_0 = create_core_units(16, 4, 4, &(0..8).collect());
-        assert_eq!(
-            amd_limited_0,
-            [[0, 1, 2, 3], [4, 5, 6, 7]]
-        );
+        assert_eq!(amd_limited_0, [[0, 1, 2, 3], [4, 5, 6, 7]]);
 
         let amd_limited_1 = create_core_units(16, 4, 4, &(8..16).collect());
-        assert_eq!(
-            amd_limited_1,
-            [[8, 9, 10, 11], [12, 13, 14, 15]]
-        );
+        assert_eq!(amd_limited_1, [[8, 9, 10, 11], [12, 13, 14, 15]]);
 
         let sp_limited_0 = create_core_units(48, 8, 3, &(0..24).collect());
         assert_eq!(
